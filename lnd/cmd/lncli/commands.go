@@ -2842,3 +2842,347 @@ func stopresync(ctx *cli.Context) er.R {
 	printRespJSON(resp)
 	return nil
 }
+
+var getwalletseedCommand = cli.Command{
+	Name:        "getwalletseed",
+	Category:    "Wallet",
+	Usage:       "Get the wallet seed words for this wallet",
+	ArgsUsage:   "",
+	Description: `Get the wallet seed words for this wallet`,
+	Action:      actionDecorator(getwalletseed),
+}
+
+func getwalletseed(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+
+	req := &lnrpc.GetWalletSeedRequest{}
+
+	resp, err := client.GetWalletSeed(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var getsecretCommand = cli.Command{
+	Name:        "getsecret",
+	Category:    "Wallet",
+	Usage:       "Get a secret seed",
+	ArgsUsage:   "name",
+	Description: `Get a secret seed which is generated using the wallet's private key, this can be used as a password for another application`,
+	Action:      actionDecorator(getsecret),
+}
+
+func getsecret(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	name := ""
+	if ctx.IsSet("name") {
+		name = ctx.String("name")
+	}
+	req := &lnrpc.GetSecretRequest{
+		Name: name,
+	}
+
+	resp, err := client.GetSecret(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var importprivkeyCommand = cli.Command{
+	Name:        "importprivkey",
+	Category:    "Wallet",
+	Usage:       "Imports a WIF-encoded private key to the 'imported' account.",
+	ArgsUsage:   "'privkey' ('label' rescan=true legacy=false)",
+	Description: `Imports a WIF-encoded private key to the 'imported' account.`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "privkey",
+			Usage: "The WIF-encoded private key",
+		},
+		cli.BoolFlag{
+			Name:  "rescan",
+			Usage: "Rescan the blockchain (since the genesis block) for outputs controlled by the imported key",
+		},
+		cli.BoolFlag{
+			Name:  "legacy",
+			Usage: "If true then import as a legacy address, otherwise segwit",
+		},
+	},
+	Action: actionDecorator(importprivkey),
+}
+
+func importprivkey(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+
+	args := ctx.Args()
+	privkey := ""
+
+	if args.Present() {
+		privkey = args.First()
+		args = args.Tail()
+	} else {
+		return er.Errorf("Private key argument missing")
+	}
+
+	rescan := true
+	if ctx.IsSet("rescan") {
+		rescan = ctx.Bool("rescan")
+	}
+	legacy := false
+	if ctx.IsSet("legacy") {
+		legacy = ctx.Bool("legacy")
+	}
+	req := &lnrpc.ImportPrivKeyRequest{
+		PrivateKey: privkey,
+		Rescan:     rescan,
+		Legacy:     legacy,
+	}
+
+	resp, err := client.ImportPrivKey(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var listlockunspentCommand = cli.Command{
+	Name:        "listlockunspent",
+	Category:    "Wallet",
+	Usage:       "Returns a JSON array of outpoints marked as locked (with lockunspent) for this wallet session.",
+	ArgsUsage:   "",
+	Description: `Returns a JSON array of outpoints marked as locked (with lockunspent) for this wallet session.`,
+	Action:      actionDecorator(listLockUnspent),
+}
+
+func listLockUnspent(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+
+	req := &lnrpc.ListLockUnspentRequest{}
+
+	resp, err := client.ListLockUnspent(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var lockunspentCommand = cli.Command{
+	Name:      "lockunspent",
+	Category:  "Wallet",
+	Usage:     "Locks or unlocks an unspent output.",
+	ArgsUsage: "unlock [{\"txid\":\"value\",\"vout\":n},...] (\"lockname\")",
+	Description: `Locks or unlocks an unspent output.
+	Locked outputs are not chosen for transaction inputs of authored transactions and are not included in 'listunspent' results.
+	Locked outputs are volatile and are not saved across wallet restarts.
+	If unlock is true and no transaction outputs are specified, all locked outputs are marked unlocked.`,
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "unlock",
+			Usage: "unlock outputs, lock outputs",
+		},
+		cli.StringFlag{
+			Name:  "transactions",
+			Usage: "Transaction outputs to lock or unlock",
+		},
+		cli.StringFlag{
+			Name:  "lockname",
+			Usage: "Name of the lock to apply, allows groups of locks to be cleared at once",
+		},
+	},
+	Action: actionDecorator(lockUnspent),
+}
+
+func lockUnspent(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+
+	lockname := "none"
+	unlock := true
+	inputTransactions := ""
+	args := ctx.Args()
+	if args.Present() {
+		if args.First() == "lock" {
+			unlock = false
+		}
+		args = args.Tail()
+	}
+	if args.Present() {
+		inputTransactions = args.First()
+	}
+	var transactions []*lnrpc.LockUnspentTransaction
+
+	err := json.Unmarshal([]byte(inputTransactions), &transactions)
+	if err != nil {
+		return er.E(err)
+	}
+
+	req := &lnrpc.LockUnspentRequest{
+		Unlock:       unlock,
+		Transactions: transactions,
+		Lockname:     lockname,
+	}
+
+	resp, err := client.LockUnspent(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var createtransactionCommand = cli.Command{
+	Name:        "createtransaction",
+	Category:    "Wallet",
+	Usage:       "",
+	ArgsUsage:   "\"toaddress\" amount ([\"fromaddress\",...] electrumformat \"changeaddress\" inputminheight mincon",
+	Description: `Create a transaction but do not send it to the chain`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "toaddress",
+			Usage: "The recipient to send the coins to",
+		},
+		cli.IntFlag{
+			Name:  "amount",
+			Usage: "The amount of coins to send",
+		},
+		cli.StringSliceFlag{
+			Name:  "fromaddresses",
+			Usage: "Addresses to use for selecting coins to spend",
+		},
+		cli.BoolFlag{
+			Name:  "electrumformat",
+			Usage: "If true, then the transaction result will be output in electrum incomplete transaction format, useful for signing later",
+		},
+		cli.StringFlag{
+			Name:  "changeaddress",
+			Usage: "Return extra coins to this address, if unspecified then one will be created",
+		},
+		cli.IntFlag{
+			Name:  "inputminheight",
+			Usage: "The minimum block height to take inputs from (default: 0)",
+		},
+		cli.IntFlag{
+			Name:  "minconf",
+			Usage: "Do not spend any outputs which don't have at least this number of confirmations (default 1)",
+		},
+		cli.BoolFlag{
+			Name:  "vote",
+			Usage: "True if you wish for this transaction to contain a network steward vote",
+		},
+		cli.IntFlag{
+			Name:  "maxinputs",
+			Usage: "Maximum number of transaction inputs that are allowed",
+		},
+		cli.StringFlag{
+			Name:  "autolock",
+			Usage: "If specified, all txouts spent for this transaction will be locked under this name",
+		},
+	},
+	Action: actionDecorator(createTransaction),
+}
+
+func createTransaction(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+
+	args := ctx.Args()
+	toaddress := ""
+	if len(args) > 0 {
+		toaddress = args[0]
+		if toaddress == "" {
+			return er.Errorf("To address argument missing")
+		}
+	}
+	amount := int64(0)
+	var err error
+	if len(args) > 1 {
+		amount, err = strconv.ParseInt(args[1], 10, 0)
+		if err != nil {
+			return er.Errorf("Amount argument missing")
+		}
+	}
+	var fromaddresses []string
+	if len(args) > 2 {
+		fromaddresses = strings.Split(args[2], ",")
+	}
+	electrumformat := false
+	if len(args) > 3 {
+		electrumformat, err = strconv.ParseBool(args[3])
+		if err != nil {
+			return er.Errorf("Invalid value for electrumformat")
+		}
+	}
+
+	changeaddress := ""
+	if len(args) > 4 {
+		changeaddress = args[4]
+	}
+
+	inputminheight := int64(0)
+	if len(args) > 5 {
+		inputminheight, err = strconv.ParseInt(args[5], 10, 0)
+		if err != nil {
+			return er.Errorf("Invalid value for inputminheight")
+		}
+	}
+	minconf := int64(0)
+	if len(args) > 6 {
+		minconf, err = strconv.ParseInt(args[6], 10, 0)
+		if err != nil {
+			return er.Errorf("Invalid value for minconf")
+		}
+	}
+	var vote bool
+	if len(args) > 7 {
+		vote, err = strconv.ParseBool(args[7])
+		if err != nil {
+			return er.Errorf("Invalid value for vote")
+		}
+	}
+	maxinputs := int64(0)
+	if len(args) > 8 {
+		maxinputs, err = strconv.ParseInt(args[8], 10, 0)
+		if err != nil {
+			return er.Errorf("Invalid value for maxinputs")
+		}
+	}
+	var autolock string
+	if len(args) > 9 {
+		autolock = args[9]
+	}
+	req := &lnrpc.CreateTransactionRequest{
+		ToAddress:      toaddress,
+		Amount:         int32(amount),
+		FromAddress:    fromaddresses,
+		ElectrumFormat: electrumformat,
+		ChangeAddress:  changeaddress,
+		InputMinHeight: int32(inputminheight),
+		MinConf:        int32(minconf),
+		Vote:           vote,
+		MaxInputs:      int32(maxinputs),
+		Autolock:       autolock,
+	}
+
+	resp, err := client.CreateTransaction(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}

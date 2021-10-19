@@ -373,6 +373,12 @@ func main() {
 		profileSubCommand,
 		resyncCommand,
 		stopresyncCommand,
+		getwalletseedCommand,
+		getsecretCommand,
+		importprivkeyCommand,
+		listlockunspentCommand,
+		lockunspentCommand,
+		createtransactionCommand,
 	}
 
 	// Add any extra commands determined by build flags.
