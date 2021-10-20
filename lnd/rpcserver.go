@@ -7072,7 +7072,7 @@ func sendOutputs(
 	fromAddressses *[]string,
 	minconf int32,
 	feeSatPerKb btcutil.Amount,
-	dryRun bool,
+	sendMode wallet.SendMode,
 	changeAddress *string,
 	inputMinHeight int,
 	maxInputs int,
@@ -7080,7 +7080,7 @@ func sendOutputs(
 	req := wallet.CreateTxReq{
 		Minconf:        minconf,
 		FeeSatPerKB:    feeSatPerKb,
-		DryRun:         dryRun,
+		SendMode:       sendMode,
 		InputMinHeight: inputMinHeight,
 		MaxInputs:      maxInputs,
 		Label:          "",
@@ -7105,7 +7105,7 @@ func sendOutputs(
 		}
 		req.ChangeAddress = &addr
 	}
-	if fromAddressses != nil {
+	if fromAddressses != nil && len(*fromAddressses) > 0 {
 		addrs := make([]btcutil.Address, 0, len(*fromAddressses))
 		for _, addrStr := range *fromAddressses {
 			addr, err := btcutil.DecodeAddress(addrStr, w.ChainParams())
@@ -7168,8 +7168,7 @@ func (r *rpcServer) CreateTransaction(ctx context.Context, req *lnrpc.CreateTran
 	maxinputs := -1
 	maxinputs = int(req.MaxInputs)
 
-	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf,
-		txrules.DefaultRelayFeePerKb, true, &req.ChangeAddress, inputminheight, maxinputs)
+	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, wallet.SendModeBcasted, &req.ChangeAddress, inputminheight, maxinputs)
 	if err != nil {
 		return nil, er.Native(err)
 	}
