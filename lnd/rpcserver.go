@@ -20,6 +20,7 @@ import (
 	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/pkt-cash/pktd/blockchain"
 	"github.com/pkt-cash/pktd/btcec"
+	"github.com/pkt-cash/pktd/btcjson"
 	"github.com/pkt-cash/pktd/btcutil"
 	"github.com/pkt-cash/pktd/btcutil/er"
 	"github.com/pkt-cash/pktd/btcutil/psbt"
@@ -68,10 +69,13 @@ import (
 	"github.com/pkt-cash/pktd/lnd/zpay32"
 	"github.com/pkt-cash/pktd/pktconfig/version"
 	"github.com/pkt-cash/pktd/pktlog/log"
+	"github.com/pkt-cash/pktd/pktwallet/waddrmgr"
 	"github.com/pkt-cash/pktd/pktwallet/wallet"
 	"github.com/pkt-cash/pktd/pktwallet/wallet/txauthor"
+	"github.com/pkt-cash/pktd/pktwallet/wallet/txrules"
 	"github.com/pkt-cash/pktd/txscript"
 	"github.com/pkt-cash/pktd/wire"
+	"github.com/pkt-cash/pktd/wire/ruleerror"
 	"github.com/tv42/zbase32"
 	"google.golang.org/grpc"
 	"gopkg.in/macaroon-bakery.v2/bakery"
@@ -479,6 +483,33 @@ func MainRPCServerPermissions() map[string][]bakery.Op {
 		}},
 		"/lnrpc.Lightning/StopReSync": {{
 			Entity: "onchain",
+			Action: "write",
+		}},
+		"/lnrpc.Lightning/GetWalletSeed": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/GetSecret": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/ImportPrivKey": {{
+			Entity: "wallet",
+			Action: "write",
+		}},
+		"/lnrpc.Lightning/ListLockUnspent": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/LockUnspent": {{
+			Entity: "wallet",
+			Action: "write",
+		}},
+		"/lnrpc.Lightning/CreateTransaction": {{
+			Entity: "wallet",
+			Action: "read",
+		}, {
+			Entity: "wallet",
 			Action: "write",
 		}},
 	}
@@ -6898,5 +6929,271 @@ func (r *rpcServer) StopReSync(ctx context.Context, req *lnrpc.StopReSyncRequest
 	}
 	return &lnrpc.StopReSyncResponse{
 		Value: msg,
+	}, nil
+}
+
+// GetWalletSeed
+func (r *rpcServer) GetWalletSeed(ctx context.Context, req *lnrpc.GetWalletSeedRequest) (*lnrpc.GetWalletSeedResponse, error) {
+	seed := r.wallet.Manager.Seed()
+	if seed == nil {
+		return nil, er.Native(er.New("No seed found, this is probably a legacy wallet"))
+	}
+	words, err := seed.Words("english")
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	return &lnrpc.GetWalletSeedResponse{
+		Seed: words,
+	}, nil
+}
+
+//Getsecret
+func (r *rpcServer) GetSecret(ctx context.Context, req *lnrpc.GetSecretRequest) (*lnrpc.GetSecretResponse, error) {
+	ptrsecret, err := r.wallet.GetSecret(req.Name)
+	secret := ""
+	if ptrsecret != nil {
+		secret = *ptrsecret
+	}
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	return &lnrpc.GetSecretResponse{
+		Secret: secret,
+	}, nil
+}
+
+//ImportPrivKey
+func (r *rpcServer) ImportPrivKey(ctx context.Context, req *lnrpc.ImportPrivKeyRequest) (*lnrpc.ImportPrivKeyResponse, error) {
+	wif, err := btcutil.DecodeWIF(req.PrivateKey)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	w := r.wallet
+	if !wif.IsForNet(w.ChainParams()) {
+		// If the wif is for the wrong chain, lets attempt to import it anyway
+		var err er.R
+		wif, err = btcutil.NewWIF(wif.PrivKey, w.ChainParams(), wif.CompressPubKey)
+		if err != nil {
+			return nil, er.Native(err)
+		}
+	}
+
+	scope := waddrmgr.KeyScopeBIP0084
+	if req.Legacy {
+		scope = waddrmgr.KeyScopeBIP0044
+	}
+
+	// Import the private key, handling any errors.
+	addr, err := w.ImportPrivateKey(scope, wif, nil, req.Rescan)
+	switch {
+	case waddrmgr.ErrLocked.Is(err):
+		return nil, er.Native(er.New("ErrRPCWalletUnlockNeeded: -13 Enter the wallet passphrase with walletpassphrase first"))
+	}
+
+	return &lnrpc.ImportPrivKeyResponse{
+		Address: addr,
+	}, er.Native(err)
+}
+
+//ListLockUnspent
+func (r *rpcServer) ListLockUnspent(ctx context.Context, req *lnrpc.ListLockUnspentRequest) (*lnrpc.ListLockUnspentResponse, error) {
+	list := r.wallet.LockedOutpoints()
+	var lockedunspent []string
+	for i := 0; i < len(list); i++ {
+		lockedunspent = append(lockedunspent, fmt.Sprintf("%s-txid-%s-vout-%d", list[i].LockName, list[i].Txid, list[i].Vout))
+	}
+	return &lnrpc.ListLockUnspentResponse{
+		LockedUnspent: lockedunspent,
+	}, nil
+}
+
+//LockUnspent
+func (r *rpcServer) LockUnspent(ctx context.Context, req *lnrpc.LockUnspentRequest) (*lnrpc.LockUnspentResponse, error) {
+	w := r.wallet
+	lockname := "none"
+	if req.Lockname != "" {
+		lockname = req.Lockname
+	}
+	unlock := req.Unlock
+	transactions := req.Transactions
+	switch {
+	case unlock && len(transactions) == 0:
+		w.ResetLockedOutpoints(&lockname)
+	default:
+		for _, input := range transactions {
+			txHash, err := chainhash.NewHashFromStr(input.Txid)
+			if err != nil {
+				return nil, er.Native(err)
+			}
+			op := wire.OutPoint{Hash: *txHash, Index: uint32(input.Vout)}
+			if unlock {
+				w.UnlockOutpoint(op)
+			} else {
+				w.LockOutpoint(op, lockname)
+			}
+		}
+	}
+
+	return &lnrpc.LockUnspentResponse{
+		Result: true,
+	}, nil
+}
+
+// makeOutputs creates a slice of transaction outputs from a pair of address
+// strings to amounts.  This is used to create the outputs to include in newly
+// created transactions from a JSON object describing the output destinations
+// and amounts.
+func makeOutputs(pairs map[string]btcutil.Amount, vote *waddrmgr.NetworkStewardVote,
+	chainParams *chaincfg.Params) ([]*wire.TxOut, er.R) {
+	outputs := make([]*wire.TxOut, 0, len(pairs))
+	if vote == nil {
+		vote = &waddrmgr.NetworkStewardVote{}
+	}
+	for addrStr, amt := range pairs {
+		addr, err := btcutil.DecodeAddress(addrStr, chainParams)
+		if err != nil {
+			return nil, er.Errorf("cannot decode address: %s", err)
+		}
+
+		pkScript, err := txscript.PayToAddrScriptWithVote(addr, vote.VoteFor, vote.VoteAgainst)
+		if err != nil {
+			return nil, er.Errorf("cannot create txout script: %s", err)
+		}
+
+		outputs = append(outputs, wire.NewTxOut(int64(amt), pkScript))
+	}
+	return outputs, nil
+}
+
+func sendOutputs(
+	w *wallet.Wallet,
+	amounts map[string]btcutil.Amount,
+	vote *waddrmgr.NetworkStewardVote,
+	fromAddressses *[]string,
+	minconf int32,
+	feeSatPerKb btcutil.Amount,
+	sendMode wallet.SendMode,
+	changeAddress *string,
+	inputMinHeight int,
+	maxInputs int,
+) (*txauthor.AuthoredTx, er.R) {
+	req := wallet.CreateTxReq{
+		Minconf:        minconf,
+		FeeSatPerKB:    feeSatPerKb,
+		SendMode:       sendMode,
+		InputMinHeight: inputMinHeight,
+		MaxInputs:      maxInputs,
+		Label:          "",
+	}
+	if inputMinHeight > 0 {
+		// TODO(cjd): Ideally we would expose the comparator choice to the
+		// API consumer, but this is an API break. When we're using inputMinHeight
+		// it's normally because we're trying to do multiple createtransaction
+		// requests without double-spending, so it's important to prefer oldest
+		// in this case.
+		req.InputComparator = wallet.PreferOldest
+	}
+	var err er.R
+	req.Outputs, err = makeOutputs(amounts, vote, w.ChainParams())
+	if err != nil {
+		return nil, err
+	}
+	if *changeAddress != "" {
+		addr, err := btcutil.DecodeAddress(*changeAddress, w.ChainParams())
+		if err != nil {
+			return nil, err
+		}
+		req.ChangeAddress = &addr
+	}
+	if fromAddressses != nil && len(*fromAddressses) > 0 {
+		addrs := make([]btcutil.Address, 0, len(*fromAddressses))
+		for _, addrStr := range *fromAddressses {
+			addr, err := btcutil.DecodeAddress(addrStr, w.ChainParams())
+			if err != nil {
+				return nil, err
+			}
+			addrs = append(addrs, addr)
+		}
+		req.InputAddresses = &addrs
+	}
+	tx, err := w.SendOutputs(req)
+	if err != nil {
+		if ruleerror.ErrNegativeTxOutValue.Is(err) {
+			return nil, er.New("amount must be positive")
+		}
+		if waddrmgr.ErrLocked.Is(err) {
+			return nil, er.New("Enter the wallet passphrase with walletpassphrase first")
+		}
+		if btcjson.Err.Is(err) {
+			return nil, err
+		}
+		return nil, btcjson.ErrRPCInternal.New("SendOutputs failed", err)
+	}
+	return tx, nil
+}
+
+//CreateTransaction
+func (r *rpcServer) CreateTransaction(ctx context.Context, req *lnrpc.CreateTransactionRequest) (*lnrpc.CreateTransactionResponse, error) {
+	toaddress := req.ToAddress
+	amount := req.Amount
+	fromaddresses := req.FromAddress
+
+	autolock := req.Autolock
+
+	if amount < 0 {
+		return nil, er.Native(er.New("amount must be positive"))
+	}
+	minconf := int32(req.MinConf)
+	if minconf < 0 {
+		return nil, er.Native(er.New("minconf must be positive"))
+	}
+	inputminheight := 0
+	if req.InputMinHeight > 0 {
+		inputminheight = int(req.InputMinHeight)
+	}
+	// Create map of address and amount pairs.
+	amt, err := btcutil.NewAmount(float64(amount))
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	amounts := map[string]btcutil.Amount{
+		toaddress: amt,
+	}
+
+	var vote *waddrmgr.NetworkStewardVote
+	vote, err = r.wallet.NetworkStewardVote(0, waddrmgr.KeyScopeBIP0044)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	maxinputs := -1
+	maxinputs = int(req.MaxInputs)
+
+	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, wallet.SendModeBcasted, &req.ChangeAddress, inputminheight, maxinputs)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+
+	for _, in := range tx.Tx.TxIn {
+		op := in.PreviousOutPoint
+		r.wallet.LockOutpoint(op, autolock)
+	}
+
+	transaction := ""
+	if req.ElectrumFormat {
+		b := new(bytes.Buffer)
+		if err := tx.Tx.BtcEncode(b, 0, wire.ForceEptfEncoding); err != nil {
+			return nil, er.Native(err)
+		}
+		transaction = hex.EncodeToString(b.Bytes())
+	} else {
+		b := bytes.NewBuffer(make([]byte, 0, tx.Tx.SerializeSize()))
+		if err := tx.Tx.Serialize(b); err != nil {
+			return nil, er.Native(err)
+		}
+		transaction = hex.EncodeToString(b.Bytes())
+	}
+
+	return &lnrpc.CreateTransactionResponse{
+		Transaction: transaction,
 	}, nil
 }
