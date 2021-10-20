@@ -3048,9 +3048,9 @@ func lockUnspent(ctx *cli.Context) er.R {
 var createtransactionCommand = cli.Command{
 	Name:        "createtransaction",
 	Category:    "Wallet",
-	Usage:       "",
-	ArgsUsage:   "\"toaddress\" amount ([\"fromaddress\",...] electrumformat \"changeaddress\" inputminheight mincon",
-	Description: `Create a transaction but do not send it to the chain`,
+	Usage:       "Create a transaction but do not send it to the chain.",
+	ArgsUsage:   "\"toaddress\" amount ([\"fromaddress\",...] electrumformat \"changeaddress\" inputminheight mincon vote maxinputs autlock sign)",
+	Description: `Create a transaction but do not send it to the chain.`,
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name:  "toaddress",
@@ -3091,6 +3091,10 @@ var createtransactionCommand = cli.Command{
 		cli.StringFlag{
 			Name:  "autolock",
 			Usage: "If specified, all txouts spent for this transaction will be locked under this name",
+		},
+		cli.BoolFlag{
+			Name:  "sign",
+			Usage: "True if transaction should be signed",
 		},
 	},
 	Action: actionDecorator(createTransaction),
@@ -3184,7 +3188,7 @@ func createTransaction(ctx *cli.Context) er.R {
 		Vote:           vote,
 		MaxInputs:      int32(maxinputs),
 		Autolock:       autolock,
-		Sign: 			sign,
+		Sign:           sign,
 	}
 
 	resp, err := client.CreateTransaction(ctxb, req)
