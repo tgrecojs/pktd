@@ -3166,6 +3166,13 @@ func createTransaction(ctx *cli.Context) er.R {
 	if len(args) > 9 {
 		autolock = args[9]
 	}
+	sign := true
+	if len(args) > 10 {
+		sign, err = strconv.ParseBool(args[10])
+		if err != nil {
+			return er.Errorf("Invalid value for sign")
+		}
+	}
 	req := &lnrpc.CreateTransactionRequest{
 		ToAddress:      toaddress,
 		Amount:         int32(amount),
@@ -3177,6 +3184,7 @@ func createTransaction(ctx *cli.Context) er.R {
 		Vote:           vote,
 		MaxInputs:      int32(maxinputs),
 		Autolock:       autolock,
+		Sign: 			sign,
 	}
 
 	resp, err := client.CreateTransaction(ctxb, req)

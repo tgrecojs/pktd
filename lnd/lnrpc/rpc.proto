@@ -3858,6 +3858,7 @@ message CreateTransactionRequest{
     bool vote = 8;
     int32 max_inputs = 9;
     string autolock = 10;
+    bool sign = 11;
 }
 
 message CreateTransactionResponse{

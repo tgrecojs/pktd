@@ -7167,8 +7167,11 @@ func (r *rpcServer) CreateTransaction(ctx context.Context, req *lnrpc.CreateTran
 	}
 	maxinputs := -1
 	maxinputs = int(req.MaxInputs)
-
-	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, wallet.SendModeBcasted, &req.ChangeAddress, inputminheight, maxinputs)
+	sendmode := wallet.SendModeSigned
+	if !req.Sign {
+		sendmode = wallet.SendModeUnsigned
+	}
+	tx, err := sendOutputs(r.wallet, amounts, vote, &fromaddresses, minconf, txrules.DefaultRelayFeePerKb, sendmode, &req.ChangeAddress, inputminheight, maxinputs)
 	if err != nil {
 		return nil, er.Native(err)
 	}
