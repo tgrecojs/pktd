@@ -379,6 +379,9 @@ func main() {
 		listlockunspentCommand,
 		lockunspentCommand,
 		createtransactionCommand,
+		dumpprivkeyCommand,
+		getnewaddressCommand,
+		gettransactionCommand,
 	}
 
 	// Add any extra commands determined by build flags.

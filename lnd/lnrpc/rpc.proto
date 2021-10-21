@@ -535,6 +535,9 @@ service Lightning {
     /*Imports a WIF-encoded private key to the 'imported' account.*/
     rpc ImportPrivKey (ImportPrivKeyRequest) returns (ImportPrivKeyResponse);
 
+    /*Returns the private key in WIF encoding that controls some wallet address.*/
+    rpc DumpPrivKey (DumpPrivKeyRequest) returns (DumpPrivKeyResponse);
+
     /*Returns a JSON array of outpoints marked as locked (with lockunspent) for this wallet session.*/
     rpc ListLockUnspent (ListLockUnspentRequest) returns (ListLockUnspentResponse);
 
@@ -543,6 +546,12 @@ service Lightning {
 
     /*Create a transaction but do not send it to the chain*/
     rpc CreateTransaction (CreateTransactionRequest) returns (CreateTransactionResponse);
+
+    /*Generates and returns a new payment address*/
+    rpc GetNewAddress (GetNewAddressRequest) returns (GetNewAddressResponse);
+
+    /*Returns a JSON object with details regarding a transaction relevant to this wallet.*/
+    rpc GetTransaction (GetTransactionRequest) returns (GetTransactionResponse);
 }
 
 message Utxo {
@@ -591,7 +600,7 @@ message Transaction {
     repeated string dest_addresses = 8;
 
     // The raw transaction hex.
-    string raw_tx_hex = 9;
+    bytes raw_tx_hex = 9;
 
     // A label that was optionally set on transaction broadcast.
     string label = 10;
@@ -1037,10 +1046,11 @@ message SignMessageRequest {
     base64.
     */
     bytes msg = 1;
+    string address = 2;
 }
 message SignMessageResponse {
     // The signature for the given message
-    string signature = 1;
+    bytes signature = 1;
 }
 
 message VerifyMessageRequest {
@@ -1058,7 +1068,7 @@ message VerifyMessageResponse {
     bool valid = 1;
 
     // The pubkey recovered from the signature
-    string pubkey = 2;
+    bytes pubkey = 2;
 }
 
 message ConnectPeerRequest {
@@ -1164,7 +1174,7 @@ message Channel {
     bool active = 1;
 
     // The identity pubkey of the remote node
-    string remote_pubkey = 2;
+    bytes remote_pubkey = 2;
 
     /*
     The outpoint (txid:index) of the funding transaction. With this value, Bob
@@ -1350,7 +1360,7 @@ message ChannelCloseSummary {
     string closing_tx_hash = 4;
 
     // Public key of the remote peer that we formerly had a channel with.
-    string remote_pubkey = 5;
+    bytes remote_pubkey = 5;
 
     // Total capacity of the channel.
     int64 capacity = 6;
@@ -1481,7 +1491,7 @@ message ClosedChannelsResponse {
 
 message Peer {
     // The identity pubkey of the peer
-    string pub_key = 1;
+    bytes pub_key = 1;
 
     // Network address of the peer; eg `127.0.0.1:10011`
     string address = 3;
@@ -1577,7 +1587,7 @@ message PeerEventSubscription {
 
 message PeerEvent {
     // The identity pubkey of the peer.
-    string pub_key = 1;
+    bytes pub_key = 1;
 
     enum EventType {
         PEER_ONLINE = 0;
@@ -1597,7 +1607,7 @@ message GetInfoResponse {
     string commit_hash = 20;
 
     // The identity pubkey of the current node.
-    string identity_pubkey = 1;
+    bytes identity_pubkey = 1;
 
     // If applicable, the alias of the current node, e.g. "bob"
     string alias = 2;
@@ -2060,7 +2070,7 @@ message PendingChannelsRequest {
 }
 message PendingChannelsResponse {
     message PendingChannel {
-        string remote_node_pub = 1;
+        bytes remote_node_pub = 1;
         string channel_point = 2;
 
         int64 capacity = 3;
@@ -2665,8 +2675,8 @@ message ChannelEdge {
 
     uint32 last_update = 3 [deprecated = true];
 
-    string node1_pub = 4;
-    string node2_pub = 5;
+    bytes node1_pub = 4;
+    bytes node2_pub = 5;
 
     int64 capacity = 6;
 
@@ -3303,13 +3313,13 @@ message PayReqString {
     string pay_req = 1;
 }
 message PayReq {
-    string destination = 1;
-    string payment_hash = 2;
+    bytes destination = 1;
+    bytes payment_hash = 2;
     int64 num_satoshis = 3;
     int64 timestamp = 4;
     int64 expiry = 5;
     string description = 6;
-    string description_hash = 7;
+    bytes description_hash = 7;
     string fallback_addr = 8;
     int64 cltv_expiry = 9;
     repeated RouteHint route_hints = 10;
@@ -3579,7 +3589,7 @@ message BakeMacaroonRequest {
 }
 message BakeMacaroonResponse {
     // The hex encoded macaroon, serialized in binary format.
-    string macaroon = 1;
+    bytes macaroon = 1;
 }
 
 message ListMacaroonIDsRequest {
@@ -3862,5 +3872,55 @@ message CreateTransactionRequest{
 }
 
 message CreateTransactionResponse{
-    string transaction = 1;
+    bytes transaction = 1;
+}
+
+message DumpPrivKeyRequest{
+    string address = 1;
+}
+
+message DumpPrivKeyResponse{
+    string private_key = 1;
+}
+
+message GetNewAddressRequest{
+    bool legacy = 1;
+}
+
+message GetNewAddressResponse{
+    string address = 1;
+}
+
+message GetTransactionRequest{
+    string txid = 1;
+    bool includewatchonly = 2;
+}
+
+message GetTransactionDetailsResult {
+    string account = 1;
+    string address = 2;
+    double amount = 3;
+    string category = 4;
+    bool involves_watch_only = 5;
+    double fee = 6;
+    uint32 vout = 7;
+}
+
+message TransactionResult{
+    double amount = 1;
+    double fee = 2;
+    int64 confirmations = 3;
+    string block_hash = 4;
+    int64 block_index = 5;
+    int64 block_time = 6;
+    string txid = 7;
+    repeated string wallet_conflicts = 8;
+    int64 time = 9;
+    int64 time_received = 10;
+    repeated GetTransactionDetailsResult details = 11;
+    bytes hex = 12;
+}
+
+message GetTransactionResponse{
+    TransactionResult transaction = 1;
 }

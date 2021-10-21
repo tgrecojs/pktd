@@ -512,6 +512,18 @@ func MainRPCServerPermissions() map[string][]bakery.Op {
 			Entity: "wallet",
 			Action: "write",
 		}},
+		"/lnrpc.Lightning/DumpPrivKey": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/GetNewAddress": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/GetTransaction": {{
+			Entity: "wallet",
+			Action: "read",
+		}},
 	}
 }
 
@@ -1485,8 +1497,7 @@ func (r *rpcServer) SignMessage(ctx context.Context,
 		return nil, er.Native(err)
 	}
 
-	sig := zbase32.EncodeToString(sigBytes)
-	return &lnrpc.SignMessageResponse{Signature: sig}, nil
+	return &lnrpc.SignMessageResponse{Signature: sigBytes}, nil
 }
 
 // VerifyMessage verifies a signature over a msg. The signature must be zbase32
@@ -1515,7 +1526,7 @@ func (r *rpcServer) VerifyMessage(ctx context.Context,
 	if err != nil {
 		return &lnrpc.VerifyMessageResponse{Valid: false}, nil
 	}
-	pubKeyHex := hex.EncodeToString(pubKey.SerializeCompressed())
+	pubKeyHex := pubKey.SerializeCompressed()
 
 	var pub [33]byte
 	copy(pub[:], pubKey.SerializeCompressed())
@@ -2570,7 +2581,7 @@ func (r *rpcServer) GetInfo0(ctx context.Context,
 	nPendingChannels := uint32(len(pendingChannels))
 
 	idPub := r.server.identityECDH.PubKey().SerializeCompressed()
-	encodedIDPub := hex.EncodeToString(idPub)
+	encodedIDPub := idPub
 
 	bestHash, bestHeight, err := r.server.cc.ChainIO.GetBestBlock()
 	if err != nil {
@@ -2728,7 +2739,7 @@ func (r *rpcServer) ListPeers(ctx context.Context,
 		)
 
 		rpcPeer := &lnrpc.Peer{
-			PubKey:    hex.EncodeToString(nodePub[:]),
+			PubKey:    nodePub[:],
 			Address:   serverPeer.Conn().RemoteAddr().String(),
 			Inbound:   serverPeer.Inbound(),
 			BytesRecv: serverPeer.BytesReceived(),
@@ -2821,13 +2832,13 @@ func (r *rpcServer) SubscribePeerEvents(req *lnrpc.PeerEventSubscription,
 			switch peerEvent := e.(type) {
 			case peernotifier.PeerOfflineEvent:
 				event = &lnrpc.PeerEvent{
-					PubKey: hex.EncodeToString(peerEvent.PubKey[:]),
+					PubKey: peerEvent.PubKey[:],
 					Type:   lnrpc.PeerEvent_PEER_OFFLINE,
 				}
 
 			case peernotifier.PeerOnlineEvent:
 				event = &lnrpc.PeerEvent{
-					PubKey: hex.EncodeToString(peerEvent.PubKey[:]),
+					PubKey: peerEvent.PubKey[:],
 					Type:   lnrpc.PeerEvent_PEER_ONLINE,
 				}
 
@@ -3047,7 +3058,7 @@ func (r *rpcServer) PendingChannels(ctx context.Context,
 
 		resp.PendingOpenChannels[i] = &lnrpc.PendingChannelsResponse_PendingOpenChannel{
 			Channel: &lnrpc.PendingChannelsResponse_PendingChannel{
-				RemoteNodePub:        hex.EncodeToString(pub),
+				RemoteNodePub:        pub,
 				ChannelPoint:         pendingChan.FundingOutpoint.String(),
 				Capacity:             int64(pendingChan.Capacity),
 				LocalBalance:         int64(localCommitment.LocalBalance.ToSatoshis()),
@@ -3087,7 +3098,7 @@ func (r *rpcServer) PendingChannels(ctx context.Context,
 		// who initiated the channel, so we set the initiator field to
 		// unknown.
 		channel := &lnrpc.PendingChannelsResponse_PendingChannel{
-			RemoteNodePub:  hex.EncodeToString(pub),
+			RemoteNodePub:  pub,
 			ChannelPoint:   chanPoint.String(),
 			Capacity:       int64(pendingClose.Capacity),
 			LocalBalance:   int64(pendingClose.SettledBalance),
@@ -3233,7 +3244,7 @@ func (r *rpcServer) PendingChannels(ctx context.Context,
 		}
 
 		channel := &lnrpc.PendingChannelsResponse_PendingChannel{
-			RemoteNodePub:        hex.EncodeToString(pub),
+			RemoteNodePub:        pub,
 			ChannelPoint:         chanPoint.String(),
 			Capacity:             int64(waitingClose.Capacity),
 			LocalBalance:         int64(waitingClose.LocalCommitment.LocalBalance.ToSatoshis()),
@@ -3586,7 +3597,7 @@ func createRPCOpenChannel(r *rpcServer, graph *channeldb.ChannelGraph,
 	dbChannel *channeldb.OpenChannel, isActive bool) (*lnrpc.Channel, er.R) {
 
 	nodePub := dbChannel.IdentityPub
-	nodeID := hex.EncodeToString(nodePub.SerializeCompressed())
+	nodeID := nodePub.SerializeCompressed()
 	chanPoint := dbChannel.FundingOutpoint
 
 	// Next, we'll determine whether the channel is public or not.
@@ -3791,7 +3802,7 @@ func (r *rpcServer) createRPCClosedChannel(
 	dbChannel *channeldb.ChannelCloseSummary) (*lnrpc.ChannelCloseSummary, er.R) {
 
 	nodePub := dbChannel.RemotePub
-	nodeID := hex.EncodeToString(nodePub.SerializeCompressed())
+	nodeID := nodePub.SerializeCompressed()
 
 	var (
 		closeType      lnrpc.ChannelCloseSummary_ClosureType
@@ -5043,7 +5054,7 @@ func (r *rpcServer) SubscribeTransactions(req *lnrpc.GetTransactionsRequest,
 				TimeStamp:        tx.Timestamp,
 				TotalFees:        tx.TotalFees,
 				DestAddresses:    destAddresses,
-				RawTxHex:         hex.EncodeToString(tx.RawTx),
+				RawTxHex:         tx.RawTx,
 			}
 			if err := updateStream.Send(detail); err != nil {
 				return err
@@ -5060,7 +5071,7 @@ func (r *rpcServer) SubscribeTransactions(req *lnrpc.GetTransactionsRequest,
 				TimeStamp:     tx.Timestamp,
 				TotalFees:     tx.TotalFees,
 				DestAddresses: destAddresses,
-				RawTxHex:      hex.EncodeToString(tx.RawTx),
+				RawTxHex:      tx.RawTx,
 			}
 			if err := updateStream.Send(detail); err != nil {
 				return err
@@ -5215,8 +5226,8 @@ func marshalDbEdge(edgeInfo *channeldb.ChannelEdgeInfo,
 		ChanPoint: edgeInfo.ChannelPoint.String(),
 		// TODO(roasbeef): update should be on edge info itself
 		LastUpdate: uint32(lastUpdate),
-		Node1Pub:   hex.EncodeToString(edgeInfo.NodeKey1Bytes[:]),
-		Node2Pub:   hex.EncodeToString(edgeInfo.NodeKey2Bytes[:]),
+		Node1Pub:   edgeInfo.NodeKey1Bytes[:],
+		Node2Pub:   edgeInfo.NodeKey2Bytes[:],
 		Capacity:   int64(edgeInfo.Capacity),
 	}
 
@@ -5826,13 +5837,13 @@ func (r *rpcServer) DecodePayReq(ctx context.Context,
 
 	dest := payReq.Destination.SerializeCompressed()
 	return &lnrpc.PayReq{
-		Destination:     hex.EncodeToString(dest),
-		PaymentHash:     hex.EncodeToString(payReq.PaymentHash[:]),
+		Destination:     dest,
+		PaymentHash:     payReq.PaymentHash[:],
 		NumSatoshis:     amtSat,
 		NumMsat:         amtMsat,
 		Timestamp:       payReq.Timestamp.Unix(),
 		Description:     desc,
-		DescriptionHash: hex.EncodeToString(descHash[:]),
+		DescriptionHash: descHash[:],
 		FallbackAddr:    fallbackAddr,
 		Expiry:          expiry,
 		CltvExpiry:      int64(payReq.MinFinalCLTVExpiry()),
@@ -6638,10 +6649,10 @@ func (r *rpcServer) BakeMacaroon0(ctx context.Context,
 	if errr != nil {
 		return nil, er.E(errr)
 	}
-	resp := &lnrpc.BakeMacaroonResponse{}
-	resp.Macaroon = hex.EncodeToString(newMacBytes)
 
-	return resp, nil
+	return &lnrpc.BakeMacaroonResponse{
+		Macaroon: newMacBytes,
+	}, nil
 }
 
 func (r *rpcServer) ListMacaroonIDs(ctx context.Context, req *lnrpc.ListMacaroonIDsRequest) (
@@ -7181,22 +7192,213 @@ func (r *rpcServer) CreateTransaction(ctx context.Context, req *lnrpc.CreateTran
 		r.wallet.LockOutpoint(op, autolock)
 	}
 
-	transaction := ""
+	var transaction []byte
 	if req.ElectrumFormat {
 		b := new(bytes.Buffer)
 		if err := tx.Tx.BtcEncode(b, 0, wire.ForceEptfEncoding); err != nil {
 			return nil, er.Native(err)
 		}
-		transaction = hex.EncodeToString(b.Bytes())
+		transaction = b.Bytes()
 	} else {
 		b := bytes.NewBuffer(make([]byte, 0, tx.Tx.SerializeSize()))
 		if err := tx.Tx.Serialize(b); err != nil {
 			return nil, er.Native(err)
 		}
-		transaction = hex.EncodeToString(b.Bytes())
+		transaction = b.Bytes()
 	}
 
 	return &lnrpc.CreateTransactionResponse{
 		Transaction: transaction,
+	}, nil
+}
+
+func decodeAddress(s string, params *chaincfg.Params) (btcutil.Address, er.R) {
+	addr, err := btcutil.DecodeAddress(s, params)
+	if err != nil {
+		msg := fmt.Sprintf("Invalid address %q: decode failed", s)
+		return nil, btcjson.ErrRPCInvalidAddressOrKey.New(msg, err)
+	}
+	if !addr.IsForNet(params) {
+		msg := fmt.Sprintf("Invalid address %q: not intended for use on %s",
+			addr, params.Name)
+		return nil, btcjson.ErrRPCInvalidAddressOrKey.New(msg, nil)
+	}
+	return addr, nil
+}
+
+//DumpPrivKey
+func (r *rpcServer) DumpPrivKey(ctx context.Context, req *lnrpc.DumpPrivKeyRequest) (*lnrpc.DumpPrivKeyResponse, error) {
+	addr, err := decodeAddress(req.Address, r.wallet.ChainParams())
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	key, err := r.wallet.DumpWIFPrivateKey(addr)
+	if waddrmgr.ErrLocked.Is(err) {
+		// Address was found, but the private key isn't
+		// accessible.
+		return nil, er.Native(er.New("ErrRPCWalletUnlockNeeded -13 Enter the wallet passphrase with walletpassphrase first"))
+	}
+	return &lnrpc.DumpPrivKeyResponse{
+		PrivateKey: key,
+	}, nil
+}
+
+func (r *rpcServer) GetNewAddress(ctx context.Context, req *lnrpc.GetNewAddressRequest) (*lnrpc.GetNewAddressResponse, error) {
+	scope := waddrmgr.KeyScopeBIP0084
+	if req.Legacy {
+		scope = waddrmgr.KeyScopeBIP0044
+	}
+	if addr, err := r.wallet.NewAddress(waddrmgr.DefaultAccountNum, scope); err != nil {
+		return nil, er.Native(err)
+	} else {
+		return &lnrpc.GetNewAddressResponse{
+			Address: addr.EncodeAddress(),
+		}, nil
+	}
+}
+
+// confirms returns the number of confirmations for a transaction in a block at
+// height txHeight (or -1 for an unconfirmed tx) given the chain height
+// curHeight.
+func confirms(txHeight, curHeight int32) int32 {
+	switch {
+	case txHeight == -1, txHeight > curHeight:
+		return 0
+	default:
+		return curHeight - txHeight + 1
+	}
+}
+
+func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactionRequest) (*lnrpc.GetTransactionResponse, error) {
+	w := r.wallet
+	txHash, err := chainhash.NewHashFromStr(req.Txid)
+	if err != nil {
+		return nil, er.Native(btcjson.ErrRPCDecodeHexString.New("Transaction hash string decode failed", err))
+	}
+
+	details, err := wallet.UnstableAPI(w).TxDetails(txHash)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	if details == nil {
+		return nil, er.Native(btcjson.ErrRPCNoTxInfo.Default())
+	}
+
+	syncBlock := w.Manager.SyncedTo()
+
+	// TODO: The serialized transaction is already in the DB, so
+	// reserializing can be avoided here.
+	var txBuf bytes.Buffer
+	txBuf.Grow(details.MsgTx.SerializeSize())
+	err = details.MsgTx.Serialize(&txBuf)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+
+	// TODO: Add a "generated" field to this result type.  "generated":true
+	// is only added if the transaction is a coinbase.
+	transaction := lnrpc.TransactionResult{
+		Txid:            req.Txid,
+		Hex:             txBuf.Bytes(),
+		Time:            details.Received.Unix(),
+		TimeReceived:    details.Received.Unix(),
+		WalletConflicts: []string{},
+	}
+
+	if details.Block.Height != -1 {
+		transaction.BlockHash = details.Block.Hash.String()
+		transaction.BlockTime = details.Block.Time.Unix()
+		transaction.Confirmations = int64(confirms(details.Block.Height, syncBlock.Height))
+	}
+
+	var (
+		debitTotal  btcutil.Amount
+		creditTotal btcutil.Amount // Excludes change
+		fee         btcutil.Amount
+		feeF64      float64
+	)
+	for _, deb := range details.Debits {
+		debitTotal += deb.Amount
+	}
+	for _, cred := range details.Credits {
+		if !cred.Change {
+			creditTotal += cred.Amount
+		}
+	}
+	// Fee can only be determined if every input is a debit.
+	if len(details.Debits) == len(details.MsgTx.TxIn) {
+		var outputTotal btcutil.Amount
+		for _, output := range details.MsgTx.TxOut {
+			outputTotal += btcutil.Amount(output.Value)
+		}
+		fee = debitTotal - outputTotal
+		feeF64 = fee.ToBTC()
+	}
+
+	if len(details.Debits) == 0 {
+		// Credits must be set later, but since we know the full length
+		// of the details slice, allocate it with the correct cap.
+		transaction.Details = make([]*lnrpc.GetTransactionDetailsResult, 0, len(details.Credits))
+	} else {
+		transaction.Details = make([]*lnrpc.GetTransactionDetailsResult, 1, len(details.Credits)+1)
+
+		transaction.Details[0] = &lnrpc.GetTransactionDetailsResult{
+			// Fields left zeroed:
+			//   InvolvesWatchOnly
+			//   Account
+			//   Address
+			//   Vout
+			//
+			// TODO(jrick): Address and Vout should always be set,
+			// but we're doing the wrong thing here by not matching
+			// core.  Instead, gettransaction should only be adding
+			// details for transaction outputs, just like
+			// listtransactions (but using the short result format).
+			Category: "send",
+			Amount:   (-debitTotal).ToBTC(), // negative since it is a send
+			Fee:      feeF64,
+		}
+		transaction.Fee = feeF64
+	}
+
+	credCat := wallet.RecvCategory(details, syncBlock.Height, w.ChainParams()).String()
+	for _, cred := range details.Credits {
+		// Change is ignored.
+		if cred.Change {
+			continue
+		}
+
+		var address string
+		var accountName string
+		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
+			details.MsgTx.TxOut[cred.Index].PkScript, w.ChainParams())
+		if err == nil && len(addrs) == 1 {
+			addr := addrs[0]
+			address = addr.EncodeAddress()
+			account, err := w.AccountOfAddress(addr)
+			if err == nil {
+				name, err := w.AccountName(waddrmgr.KeyScopeBIP0044, account)
+				if err == nil {
+					accountName = name
+				}
+			}
+		}
+
+		transaction.Details = append(transaction.Details, &lnrpc.GetTransactionDetailsResult{
+			// Fields left zeroed:
+			//   InvolvesWatchOnly
+			//   Fee
+			Account:  accountName,
+			Address:  address,
+			Category: credCat,
+			Amount:   cred.Amount.ToBTC(),
+			Vout:     cred.Index,
+		})
+	}
+
+	transaction.Amount = creditTotal.ToBTC()
+
+	return &lnrpc.GetTransactionResponse{
+		Transaction: &transaction,
 	}, nil
 }

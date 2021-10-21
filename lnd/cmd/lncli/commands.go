@@ -936,7 +936,7 @@ func closeAllChannels(ctx *cli.Context) er.R {
 	for _, channel := range channelsToClose {
 		go func(channel *lnrpc.Channel) {
 			res := result{}
-			res.RemotePubKey = channel.RemotePubkey
+			res.RemotePubKey = string(channel.RemotePubkey)
 			res.ChannelPoint = channel.ChannelPoint
 			defer func() {
 				resultChan <- res
@@ -1945,19 +1945,19 @@ func stopDaemon(ctx *cli.Context) er.R {
 }
 
 var signMessageCommand = cli.Command{
-	Name:      "signmessage",
-	Category:  "Wallet",
-	Usage:     "Sign a message with the node's private key.",
-	ArgsUsage: "msg",
-	Description: `
-	Sign msg with the resident node's private key.
-	Returns the signature as a zbase32 string.
-
-	Positional arguments and flags can be used interchangeably but not at the same time!`,
+	Name:        "signmessage",
+	Category:    "Wallet",
+	Usage:       "Signs a message using the private key of a payment address.",
+	ArgsUsage:   "address=\"...\" msg=\"...\"",
+	Description: `Signs a message using the private key of a payment address.`,
 	Flags: []cli.Flag{
 		cli.StringFlag{
+			Name:  "address",
+			Usage: "Payment address of private key used to sign the message with",
+		},
+		cli.StringFlag{
 			Name:  "msg",
-			Usage: "the message to sign",
+			Usage: "Message to sign",
 		},
 	},
 	Action: actionDecorator(signMessage),
@@ -1968,18 +1968,25 @@ func signMessage(ctx *cli.Context) er.R {
 	client, cleanUp := getClient(ctx)
 	defer cleanUp()
 
-	var msg []byte
+	args := ctx.Args()
 
-	switch {
-	case ctx.IsSet("msg"):
-		msg = []byte(ctx.String("msg"))
-	case ctx.Args().Present():
-		msg = []byte(ctx.Args().First())
-	default:
+	var address string
+	var msg []byte
+	if len(args) > 0 {
+		address = args[0]
+	} else {
+		return er.Errorf("address argument missing")
+	}
+	if len(args) > 1 {
+		msg = []byte(args[1])
+	} else {
 		return er.Errorf("msg argument missing")
 	}
 
-	resp, err := client.SignMessage(ctxb, &lnrpc.SignMessageRequest{Msg: msg})
+	resp, err := client.SignMessage(ctxb, &lnrpc.SignMessageRequest{
+		Msg:     msg,
+		Address: address,
+	})
 	if err != nil {
 		return er.E(err)
 	}
@@ -3192,6 +3199,137 @@ func createTransaction(ctx *cli.Context) er.R {
 	}
 
 	resp, err := client.CreateTransaction(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var dumpprivkeyCommand = cli.Command{
+	Name:        "dumpprivkey",
+	Category:    "Wallet",
+	Usage:       "Returns the private key in WIF encoding that controls some wallet address.",
+	ArgsUsage:   "address",
+	Description: `Returns the private key in WIF encoding that controls some wallet address.`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "address",
+			Usage: "The address to return a private key for",
+		},
+	},
+	Action: actionDecorator(dumpPrivKey),
+}
+
+func dumpPrivKey(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	args := ctx.Args()
+	address := ""
+	if len(args) > 0 {
+		address = args[0]
+	} else {
+		return er.Errorf("Invalid value for address")
+	}
+
+	req := &lnrpc.DumpPrivKeyRequest{
+		Address: address,
+	}
+
+	resp, err := client.DumpPrivKey(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var getnewaddressCommand = cli.Command{
+	Name:        "getnewaddress",
+	Category:    "Wallet",
+	Usage:       "Generates and returns a new payment address.",
+	ArgsUsage:   "legacy",
+	Description: `Generates and returns a new payment address.`,
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "legacy",
+			Usage: "If true then this will create a legacy form address rather than a new segwit address",
+		},
+	},
+	Action: actionDecorator(getNewAddress),
+}
+
+func getNewAddress(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	args := ctx.Args()
+	legacy := false
+	var err error
+	if len(args) > 0 {
+		legacy, err = strconv.ParseBool(args[0])
+		if err != nil {
+			return er.Errorf("Invalid value for legacy")
+		}
+	}
+
+	req := &lnrpc.GetNewAddressRequest{
+		Legacy: legacy,
+	}
+
+	resp, err := client.GetNewAddress(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var gettransactionCommand = cli.Command{
+	Name:        "gettransaction",
+	Category:    "Wallet",
+	Usage:       "Returns a JSON object with details regarding a transaction relevant to this wallet.",
+	ArgsUsage:   "txid includewatchonly",
+	Description: `Returns a JSON object with details regarding a transaction relevant to this wallet.`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "txid",
+			Usage: "Hash of the transaction to query",
+		},
+		cli.BoolFlag{
+			Name:  "includewatchonly",
+			Usage: "Also consider transactions involving watched addresses",
+		},
+	},
+	Action: actionDecorator(getTransaction),
+}
+
+func getTransaction(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	args := ctx.Args()
+	var txid string
+	includewatchonly := false
+	var err error
+	if len(args) > 0 {
+		txid = args[0]
+	} else {
+		return er.Errorf("Invalid value for txid")
+	}
+	if len(args) > 1 {
+		includewatchonly, err = strconv.ParseBool(args[1])
+		if err != nil {
+			return er.Errorf("Invalid value for includewatchonly")
+		}
+	}
+	req := &lnrpc.GetTransactionRequest{
+		Txid:             txid,
+		Includewatchonly: includewatchonly,
+	}
+
+	resp, err := client.GetTransaction(ctxb, req)
 	if err != nil {
 		return er.E(err)
 	}
