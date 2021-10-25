@@ -68,7 +68,6 @@ func getMetaServiceClient(ctx *cli.Context) (lnrpc.MetaServiceClient, func()) {
 	return lnrpc.NewMetaServiceClient(conn), cleanUp
 }
 
-
 func getClient(ctx *cli.Context) (lnrpc.LightningClient, func()) {
 	conn := getClientConn(ctx, false)
 
@@ -356,7 +355,6 @@ func main() {
 		listChainTxnsCommand,
 		stopCommand,
 		signMessageCommand,
-		verifyMessageCommand,
 		feeReportCommand,
 		updateChannelPolicyCommand,
 		forwardingHistoryCommand,
@@ -379,6 +377,9 @@ func main() {
 		listlockunspentCommand,
 		lockunspentCommand,
 		createtransactionCommand,
+		dumpprivkeyCommand,
+		getnewaddressCommand,
+		gettransactionCommand,
 	}
 
 	// Add any extra commands determined by build flags.
