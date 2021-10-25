@@ -3,6 +3,7 @@ package lnd
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -76,7 +77,6 @@ import (
 	"github.com/pkt-cash/pktd/txscript"
 	"github.com/pkt-cash/pktd/wire"
 	"github.com/pkt-cash/pktd/wire/ruleerror"
-	"github.com/tv42/zbase32"
 	"google.golang.org/grpc"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
@@ -245,10 +245,6 @@ func MainRPCServerPermissions() map[string][]bakery.Op {
 		"/lnrpc.Lightning/SignMessage": {{
 			Entity: "message",
 			Action: "write",
-		}},
-		"/lnrpc.Lightning/VerifyMessage": {{
-			Entity: "message",
-			Action: "read",
 		}},
 		"/lnrpc.Lightning/ConnectPeer": {{
 			Entity: "peers",
@@ -1492,59 +1488,13 @@ func (r *rpcServer) SignMessage(ctx context.Context,
 	}
 
 	in.Msg = append(signedMsgPrefix, in.Msg...)
-	sigBytes, err := r.server.nodeSigner.SignCompact(in.Msg)
+	src, err := r.server.nodeSigner.SignCompact(in.Msg)
 	if err != nil {
 		return nil, er.Native(err)
 	}
+	sigBytes := base64.StdEncoding.EncodeToString(src)
 
 	return &lnrpc.SignMessageResponse{Signature: sigBytes}, nil
-}
-
-// VerifyMessage verifies a signature over a msg. The signature must be zbase32
-// encoded and signed by an active node in the resident node's channel
-// database. In addition to returning the validity of the signature,
-// VerifyMessage also returns the recovered pubkey from the signature.
-func (r *rpcServer) VerifyMessage(ctx context.Context,
-	in *lnrpc.VerifyMessageRequest) (*lnrpc.VerifyMessageResponse, error) {
-
-	if in.Msg == nil {
-		return nil, er.Native(er.Errorf("need a message to verify"))
-	}
-
-	// The signature should be zbase32 encoded
-	sig, errr := zbase32.DecodeString(in.Signature)
-	if errr != nil {
-		return nil, er.Native(er.Errorf("failed to decode signature: %v", errr))
-	}
-
-	// The signature is over the double-sha256 hash of the message.
-	in.Msg = append(signedMsgPrefix, in.Msg...)
-	digest := chainhash.DoubleHashB(in.Msg)
-
-	// RecoverCompact both recovers the pubkey and validates the signature.
-	pubKey, _, err := btcec.RecoverCompact(btcec.S256(), sig, digest)
-	if err != nil {
-		return &lnrpc.VerifyMessageResponse{Valid: false}, nil
-	}
-	pubKeyHex := pubKey.SerializeCompressed()
-
-	var pub [33]byte
-	copy(pub[:], pubKey.SerializeCompressed())
-
-	// Query the channel graph to ensure a node in the network with active
-	// channels signed the message.
-	//
-	// TODO(phlip9): Require valid nodes to have capital in active channels.
-	graph := r.server.localChanDB.ChannelGraph()
-	_, active, err := graph.HasLightningNode(pub)
-	if err != nil {
-		return nil, er.Native(er.Errorf("failed to query graph: %v", err))
-	}
-
-	return &lnrpc.VerifyMessageResponse{
-		Valid:  active,
-		Pubkey: pubKeyHex,
-	}, nil
 }
 
 func (r *rpcServer) ConnectPeer(ctx context.Context,
@@ -7299,7 +7249,7 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 	// is only added if the transaction is a coinbase.
 	transaction := lnrpc.TransactionResult{
 		Txid:            req.Txid,
-		Hex:             txBuf.Bytes(),
+		Raw:             txBuf.Bytes(),
 		Time:            details.Received.Unix(),
 		TimeReceived:    details.Received.Unix(),
 		WalletConflicts: []string{},
@@ -7354,11 +7304,11 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 			// core.  Instead, gettransaction should only be adding
 			// details for transaction outputs, just like
 			// listtransactions (but using the short result format).
-			Category: "send",
-			Amount:   (-debitTotal).ToBTC(), // negative since it is a send
-			Fee:      feeF64,
+			Category:    "send",
+			Amount:      (-debitTotal).ToBTC(), // negative since it is a send
+			AmountUnits: uint64(debitTotal),
 		}
-		transaction.Fee = feeF64
+		transaction.FeeUnits = feeF64
 	}
 
 	credCat := wallet.RecvCategory(details, syncBlock.Height, w.ChainParams()).String()
@@ -7369,26 +7319,17 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 		}
 
 		var address string
-		var accountName string
 		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
 			details.MsgTx.TxOut[cred.Index].PkScript, w.ChainParams())
 		if err == nil && len(addrs) == 1 {
 			addr := addrs[0]
 			address = addr.EncodeAddress()
-			account, err := w.AccountOfAddress(addr)
-			if err == nil {
-				name, err := w.AccountName(waddrmgr.KeyScopeBIP0044, account)
-				if err == nil {
-					accountName = name
-				}
-			}
 		}
 
 		transaction.Details = append(transaction.Details, &lnrpc.GetTransactionDetailsResult{
 			// Fields left zeroed:
 			//   InvolvesWatchOnly
 			//   Fee
-			Account:  accountName,
 			Address:  address,
 			Category: credCat,
 			Amount:   cred.Amount.ToBTC(),
@@ -7396,7 +7337,7 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 		})
 	}
 
-	transaction.Amount = creditTotal.ToBTC()
+	transaction.AmountUnits = creditTotal.ToBTC()
 
 	return &lnrpc.GetTransactionResponse{
 		Transaction: &transaction,

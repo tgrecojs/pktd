@@ -105,14 +105,6 @@ service Lightning {
     */
     rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
 
-    /* lncli: `verifymessage`
-    VerifyMessage verifies a signature over a msg. The signature must be
-    zbase32 encoded and signed by an active node in the resident node's
-    channel database. In addition to returning the validity of the signature,
-    VerifyMessage also returns the recovered pubkey from the signature.
-    */
-    rpc VerifyMessage (VerifyMessageRequest) returns (VerifyMessageResponse);
-
     /* lncli: `connect`
     ConnectPeer attempts to establish a connection to a remote peer. This is at
     the networking level, and is used for communication between nodes. This is
@@ -1050,25 +1042,7 @@ message SignMessageRequest {
 }
 message SignMessageResponse {
     // The signature for the given message
-    bytes signature = 1;
-}
-
-message VerifyMessageRequest {
-    /*
-    The message over which the signature is to be verified. When using REST,
-    this field must be encoded as base64.
-    */
-    bytes msg = 1;
-
-    // The signature to be verified over the given message
-    string signature = 2;
-}
-message VerifyMessageResponse {
-    // Whether the signature was valid over the given message
-    bool valid = 1;
-
-    // The pubkey recovered from the signature
-    bytes pubkey = 2;
+    string signature = 1;
 }
 
 message ConnectPeerRequest {
@@ -3897,18 +3871,16 @@ message GetTransactionRequest{
 }
 
 message GetTransactionDetailsResult {
-    string account = 1;
-    string address = 2;
-    double amount = 3;
-    string category = 4;
-    bool involves_watch_only = 5;
-    double fee = 6;
-    uint32 vout = 7;
+    string address = 1;
+    double amount = 2;
+    string category = 3;
+    uint32 vout = 4;
+    uint64 amount_units = 5;
 }
 
 message TransactionResult{
-    double amount = 1;
-    double fee = 2;
+    double amount_units = 1;
+    double fee_units = 2;
     int64 confirmations = 3;
     string block_hash = 4;
     int64 block_index = 5;
@@ -3918,7 +3890,7 @@ message TransactionResult{
     int64 time = 9;
     int64 time_received = 10;
     repeated GetTransactionDetailsResult details = 11;
-    bytes hex = 12;
+    bytes raw = 12;
 }
 
 message GetTransactionResponse{
