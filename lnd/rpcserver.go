@@ -7308,7 +7308,8 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 			Amount:      (-debitTotal).ToBTC(), // negative since it is a send
 			AmountUnits: uint64(debitTotal),
 		}
-		transaction.FeeUnits = feeF64
+		transaction.Fee = feeF64
+		transaction.FeeUnits = uint64(fee)
 	}
 
 	credCat := wallet.RecvCategory(details, syncBlock.Height, w.ChainParams()).String()
@@ -7336,8 +7337,8 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 			Vout:     cred.Index,
 		})
 	}
-
-	transaction.AmountUnits = creditTotal.ToBTC()
+	transaction.Amount = creditTotal.ToBTC()
+	transaction.AmountUnits = uint64(creditTotal)
 
 	return &lnrpc.GetTransactionResponse{
 		Transaction: &transaction,

@@ -3879,18 +3879,20 @@ message GetTransactionDetailsResult {
 }
 
 message TransactionResult{
-    double amount_units = 1;
-    double fee_units = 2;
-    int64 confirmations = 3;
-    string block_hash = 4;
-    int64 block_index = 5;
-    int64 block_time = 6;
-    string txid = 7;
-    repeated string wallet_conflicts = 8;
-    int64 time = 9;
-    int64 time_received = 10;
-    repeated GetTransactionDetailsResult details = 11;
-    bytes raw = 12;
+    double amount = 1;
+    uint64 amount_units = 2;
+    double fee = 3;
+    uint64 fee_units = 4;
+    int64 confirmations = 5;
+    string block_hash = 6;
+    int64 block_index = 7;
+    int64 block_time = 8;
+    string txid = 9;
+    repeated string wallet_conflicts = 10;
+    int64 time = 11;
+    int64 time_received = 12;
+    repeated GetTransactionDetailsResult details = 13;
+    bytes raw = 14;
 }
 
 message GetTransactionResponse{
