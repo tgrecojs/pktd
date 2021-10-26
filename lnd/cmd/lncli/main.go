@@ -380,6 +380,8 @@ func main() {
 		dumpprivkeyCommand,
 		getnewaddressCommand,
 		gettransactionCommand,
+		setNetworkStewardVoteCommand,
+		getNetworkStewardVoteCommand,
 	}
 
 	// Add any extra commands determined by build flags.

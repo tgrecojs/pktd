@@ -520,6 +520,14 @@ func MainRPCServerPermissions() map[string][]bakery.Op {
 			Entity: "wallet",
 			Action: "read",
 		}},
+		"/lnrpc.Lightning/GetNetworkStewardVote": {{
+			Entity: "onchain", //onchain
+			Action: "read",
+		}},
+		"/lnrpc.Lightning/SetNetworkStewardVote": {{
+			Entity: "onchain", //onchain
+			Action: "write",
+		}},
 	}
 }
 
@@ -7343,4 +7351,47 @@ func (r *rpcServer) GetTransaction(ctx context.Context, req *lnrpc.GetTransactio
 	return &lnrpc.GetTransactionResponse{
 		Transaction: &transaction,
 	}, nil
+}
+
+func (r *rpcServer) GetNetworkStewardVote(ctx context.Context, req *lnrpc.GetNetworkStewardVoteRequest) (*lnrpc.GetNetworkStewardVoteResponse, error) {
+	vote, err := r.wallet.NetworkStewardVote(waddrmgr.DefaultAccountNum, waddrmgr.KeyScopeBIP0044)
+	if err != nil {
+		return nil, er.Native(err)
+	}
+	response := &lnrpc.GetNetworkStewardVoteResponse{}
+	if vote == nil {
+		return response, nil
+	}
+	params := r.wallet.ChainParams()
+	if vote.VoteFor != nil {
+		response.VoteFor = txscript.PkScriptToAddress(vote.VoteFor, params).EncodeAddress()
+	}
+	if vote.VoteAgainst != nil {
+		response.VoteAgainst = txscript.PkScriptToAddress(vote.VoteAgainst, params).EncodeAddress()
+	}
+	return response, nil
+}
+
+func (r *rpcServer) SetNetworkStewardVote(ctx context.Context, req *lnrpc.SetNetworkStewardVoteRequest) (*lnrpc.SetNetworkStewardVoteResponse, error) {
+	vote := waddrmgr.NetworkStewardVote{}
+	params := r.wallet.ChainParams()
+	if req.VoteFor == "" {
+	} else if vf, err := btcutil.DecodeAddress(req.VoteFor, params); err != nil {
+		return nil, er.Native(err)
+	} else if vfs, err := txscript.PayToAddrScript(vf); err != nil {
+		return nil, er.Native(err)
+	} else {
+		vote.VoteFor = vfs
+	}
+	if req.VoteAgainst == "" {
+	} else if va, err := btcutil.DecodeAddress(req.VoteAgainst, params); err != nil {
+		return nil, er.Native(err)
+	} else if vas, err := txscript.PayToAddrScript(va); err != nil {
+		return nil, er.Native(err)
+	} else {
+		vote.VoteAgainst = vas
+	}
+	result := &lnrpc.SetNetworkStewardVoteResponse{}
+	err := r.wallet.PutNetworkStewardVote(waddrmgr.DefaultAccountNum, waddrmgr.KeyScopeBIP0044, &vote)
+	return result, er.Native(err)
 }

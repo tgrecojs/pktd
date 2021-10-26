@@ -544,6 +544,12 @@ service Lightning {
 
     /*Returns a JSON object with details regarding a transaction relevant to this wallet.*/
     rpc GetTransaction (GetTransactionRequest) returns (GetTransactionResponse);
+
+    /*Configure the wallet to vote for a network steward when making payments (note: payments to segwit addresses cannot vote)*/
+    rpc SetNetworkStewardVote (SetNetworkStewardVoteRequest) returns (SetNetworkStewardVoteResponse);
+    
+    /*Find out how the wallet is currently configured to vote in a network steward election*/
+    rpc GetNetworkStewardVote (GetNetworkStewardVoteRequest) returns (GetNetworkStewardVoteResponse);
 }
 
 message Utxo {
@@ -3898,3 +3904,17 @@ message TransactionResult{
 message GetTransactionResponse{
     TransactionResult transaction = 1;
 }
+
+message GetNetworkStewardVoteRequest{}
+
+message GetNetworkStewardVoteResponse{
+    string vote_against = 1;
+    string vote_for = 2;
+}
+
+message SetNetworkStewardVoteRequest{
+    string vote_against = 1;
+    string vote_for = 2;
+}
+
+message SetNetworkStewardVoteResponse{}
