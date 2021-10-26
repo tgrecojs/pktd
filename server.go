@@ -248,7 +248,7 @@ type serverPeer struct {
 	filter         *bloom.Filter
 	addressesMtx   sync.RWMutex
 	knownAddresses map[string]struct{}
-	banMgr         connmgr.BanMgr
+	banScore       *connmgr.DynamicBanScore
 	quit           chan struct{}
 	// The following chans are used to sync blockmanager and server.
 	txProcessed    chan struct{}
@@ -266,7 +266,6 @@ func newServerPeer(s *server, isPersistent bool) *serverPeer {
 		quit:           make(chan struct{}),
 		txProcessed:    make(chan struct{}, 1),
 		blockProcessed: make(chan struct{}, 1),
-		banMgr:         s.banMgr,
 	}
 }
 
@@ -348,20 +347,23 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 		log.Debugf("Misbehaving whitelisted peer %s: %s", sp, reason)
 		return
 	}
+	if sp.banScore == nil {
+		log.Debugf("Misbehaving peer %s: %s and no ban manager yet")
+		return
+	}
 
 	warnThreshold := cfg.BanThreshold >> 1
-	banScore := sp.banMgr.GetScore(sp.Addr())
 	if transient == 0 && persistent == 0 {
 		// The score is not being increased, but a warning message is still
 		// logged if the score is above the warn threshold.
-		score := banScore.Int()
+		score := sp.banScore.Int()
 		if score > warnThreshold {
 			log.Warnf("Misbehaving peer %s: %s -- ban score is %d, "+
 				"it was not increased this time", sp, reason, score)
 		}
 		return
 	}
-	score := banScore.Increase(persistent, transient)
+	score := sp.banScore.Increase(persistent, transient)
 	if score > warnThreshold {
 		log.Warnf("Misbehaving peer %s: %s -- ban score increased to %d",
 			sp, reason, score)
@@ -1590,6 +1592,8 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		log.Infof("Peer %s is no longer banned", host)
 		delete(state.banned, host)
 	}
+
+	sp.banScore = s.banMgr.GetScore(host)
 
 	// TODO: Check for max peers from a single IP.
 

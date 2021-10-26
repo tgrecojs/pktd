@@ -3,6 +3,8 @@ package connmgr
 import (
 	"sync"
 	"time"
+
+	"github.com/pkt-cash/pktd/pktlog/log"
 )
 
 type dbs struct {
@@ -22,6 +24,7 @@ func now() int64 {
 func (b *BanMgr) GetScore(host string) *DynamicBanScore {
 	b.m.Lock()
 	if _, ok := b.bs[host]; !ok {
+		log.Debugf("Create new banScore for [%s]", host)
 		if b.bs == nil {
 			b.bs = make(map[string]dbs)
 		}
