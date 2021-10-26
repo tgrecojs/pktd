@@ -1590,6 +1590,9 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 
 	// TODO: Check for max peers from a single IP.
 
+	// Rapid reconnect
+	sp.addBanScore(0, 10, "connect")
+
 	// Limit max number of total peers.
 	if state.Count() >= cfg.MaxPeers {
 		log.Infof("Max peers reached [%d] - disconnecting peer %s",
