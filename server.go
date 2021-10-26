@@ -201,6 +201,7 @@ type server struct {
 	db                   database.DB
 	timeSource           blockchain.MedianTimeSource
 	services             protocol.ServiceFlag
+	banMgr               connmgr.BanMgr
 
 	// The following fields are used for optional indexes.  They will be nil
 	// if the associated index is not enabled.  These fields are set during
@@ -247,7 +248,7 @@ type serverPeer struct {
 	filter         *bloom.Filter
 	addressesMtx   sync.RWMutex
 	knownAddresses map[string]struct{}
-	banScore       connmgr.DynamicBanScore
+	banMgr         connmgr.BanMgr
 	quit           chan struct{}
 	// The following chans are used to sync blockmanager and server.
 	txProcessed    chan struct{}
@@ -265,6 +266,7 @@ func newServerPeer(s *server, isPersistent bool) *serverPeer {
 		quit:           make(chan struct{}),
 		txProcessed:    make(chan struct{}, 1),
 		blockProcessed: make(chan struct{}, 1),
+		banMgr:         s.banMgr,
 	}
 }
 
@@ -348,17 +350,18 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 	}
 
 	warnThreshold := cfg.BanThreshold >> 1
+	banScore := sp.banMgr.GetScore(sp.Addr())
 	if transient == 0 && persistent == 0 {
 		// The score is not being increased, but a warning message is still
 		// logged if the score is above the warn threshold.
-		score := sp.banScore.Int()
+		score := banScore.Int()
 		if score > warnThreshold {
 			log.Warnf("Misbehaving peer %s: %s -- ban score is %d, "+
 				"it was not increased this time", sp, reason, score)
 		}
 		return
 	}
-	score := sp.banScore.Increase(persistent, transient)
+	score := banScore.Increase(persistent, transient)
 	if score > warnThreshold {
 		log.Warnf("Misbehaving peer %s: %s -- ban score increased to %d",
 			sp, reason, score)

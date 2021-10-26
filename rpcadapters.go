@@ -51,7 +51,7 @@ func (p *rpcPeer) IsTxRelayDisabled() bool {
 // This function is safe for concurrent access and is part of the rpcserverPeer
 // interface implementation.
 func (p *rpcPeer) BanScore() uint32 {
-	return (*serverPeer)(p).banScore.Int()
+	return (*serverPeer)(p).banMgr.GetScore(p.Addr()).Int()
 }
 
 // FeeFilter returns the requested current minimum fee rate for which
