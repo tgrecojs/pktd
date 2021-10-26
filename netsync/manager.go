@@ -371,8 +371,10 @@ func (sm *SyncManager) startSync() {
 		// syncPeer to avoid instantly detecting it as stalled in the
 		// event the progress time hasn't been updated recently.
 		sm.lastProgressTime = time.Now()
-	} else {
-		log.Warnf("No sync peer candidates available")
+	} else if !sm.chain.IsCurrent() {
+		log.Warnf("No sync peer candidates available "+
+			"and best block [%s @ %s] over 24 hours old",
+			best.Hash, best.Height)
 	}
 }
 

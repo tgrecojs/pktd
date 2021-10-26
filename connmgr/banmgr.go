@@ -22,6 +22,9 @@ func now() int64 {
 func (b *BanMgr) GetScore(host string) *DynamicBanScore {
 	b.m.Lock()
 	if _, ok := b.bs[host]; !ok {
+		if b.bs == nil {
+			b.bs = make(map[string]dbs)
+		}
 		b.bs[host] = dbs{
 			bs:          &DynamicBanScore{},
 			lastUsedSec: now(),
