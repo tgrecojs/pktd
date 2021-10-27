@@ -3271,3 +3271,87 @@ func getTransaction(ctx *cli.Context) er.R {
 	printRespJSON(resp)
 	return nil
 }
+
+var setNetworkStewardVoteCommand = cli.Command{
+	Name:        "setnetworkstewardvote",
+	Category:    "On-chain",
+	Usage:       "Configure the wallet to vote for a network steward when making payments (note: payments to segwit addresses cannot vote)",
+	ArgsUsage:   "voteagainst votefor",
+	Description: `Configure the wallet to vote for a network steward when making payments (note: payments to segwit addresses cannot vote)`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "voteagainst",
+			Usage: "The address to vote against (if this is the current NS then this will cause a vote for an election)",
+		},
+		cli.StringFlag{
+			Name:  "votefor",
+			Usage: "The address to vote for (in the event of an election, this is the address who should win)",
+		},
+	},
+	Action: actionDecorator(setNetworkStewardVote),
+}
+
+func setNetworkStewardVote(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	args := ctx.Args()
+	var voteagainst string
+	var votefor string
+	var err error
+	if len(args) > 0 {
+		voteagainst = args[0]
+	} else {
+		return er.Errorf("Invalid value for voteagainst")
+	}
+	if len(args) > 1 {
+		votefor= args[1]
+	} else {
+		return er.Errorf("Invalid value for votefor")
+	}
+	req := &lnrpc.SetNetworkStewardVoteRequest{
+		VoteAgainst: voteagainst,
+		VoteFor: votefor,
+	}
+
+	resp, err := client.SetNetworkStewardVote(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var getNetworkStewardVoteCommand = cli.Command{
+	Name:        "getnetworkstewardvote",
+	Category:    "On-chain",
+	Usage:       "Find out how the wallet is currently configured to vote in a network steward election",
+	ArgsUsage:   "voteagainst votefor",
+	Description: `Find out how the wallet is currently configured to vote in a network steward election`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "voteagainst",
+			Usage: "The address which your wallet is currently voting against",
+		},
+		cli.StringFlag{
+			Name:  "votefor",
+			Usage: "The address which your wallet is currently voting for",
+		},
+	},
+	Action: actionDecorator(getNetworkStewardVote),
+}
+
+func getNetworkStewardVote(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	
+	req := &lnrpc.GetNetworkStewardVoteRequest{}
+
+	resp, err := client.GetNetworkStewardVote(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
