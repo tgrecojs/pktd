@@ -1103,6 +1103,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 
 	var pcVer *int
 	var pcAnnCount *uint64
+	var pcOrigAnnWork *[]float64
 	pcAnnBits := ""
 	var pcAnnDifficulty *float64
 	var pcBlkDifficulty *float64
@@ -1112,6 +1113,13 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		commit := packetcrypt.ExtractCoinbaseCommit(blk.MsgBlock().Transactions[0])
 		pac := commit.AnnCount()
 		pcAnnCount = &pac
+		pcOrigAnnWork0 := make([]float64, 0, 4)
+		pcOrigAnnWork = &pcOrigAnnWork0
+		for _, ann := range blk.MsgBlock().Pcp.Announcements {
+			tar := ann.GetWorkTarget()
+			origDiff := getDifficultyRatio0(tar, 0x207fffff)
+			pcOrigAnnWork0 = append(pcOrigAnnWork0, origDiff)
+		}
 		amd := commit.AnnMinDifficulty()
 		pcAnnBits = fmt.Sprintf("%08x", amd)
 		anndiff := getDifficultyRatio0(amd, 0x207fffff)
@@ -1178,6 +1186,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		Difficulty:          difficulty,
 		NextHash:            nextHashString,
 		PcpVersion:          pcVer,
+		PcOrigAnnWork:       pcOrigAnnWork,
 		PcAnnCount:          pcAnnCount,
 		PcAnnBits:           pcAnnBits,
 		PcAnnDifficulty:     pcAnnDifficulty,
