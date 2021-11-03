@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/big"
 	"math/rand"
 	"net"
@@ -1103,7 +1104,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 
 	var pcVer *int
 	var pcAnnCount *uint64
-	var pcOrigAnnWork *[]float64
+	var pcOrigAnnWork *[]int32
 	pcAnnBits := ""
 	var pcAnnDifficulty *float64
 	var pcBlkDifficulty *float64
@@ -1113,12 +1114,12 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		commit := packetcrypt.ExtractCoinbaseCommit(blk.MsgBlock().Transactions[0])
 		pac := commit.AnnCount()
 		pcAnnCount = &pac
-		pcOrigAnnWork0 := make([]float64, 0, 4)
+		pcOrigAnnWork0 := make([]int32, 0, 4)
 		pcOrigAnnWork = &pcOrigAnnWork0
 		for _, ann := range blk.MsgBlock().Pcp.Announcements {
 			tar := ann.GetWorkTarget()
 			origDiff := getDifficultyRatio0(tar, 0x207fffff)
-			pcOrigAnnWork0 = append(pcOrigAnnWork0, origDiff)
+			pcOrigAnnWork0 = append(pcOrigAnnWork0, int32(math.Round(origDiff)))
 		}
 		amd := commit.AnnMinDifficulty()
 		pcAnnBits = fmt.Sprintf("%08x", amd)

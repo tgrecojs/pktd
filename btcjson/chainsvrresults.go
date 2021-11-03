@@ -53,7 +53,7 @@ type GetBlockVerboseResult struct {
 	PcpHex              string        `json:"packetcryptproof,omitempty"`
 	PcpVersion          *int          `json:"packetcryptversion,omitempty"`
 	PcAnnCount          *uint64       `json:"packetcryptanncount,omitempty"`
-	PcOrigAnnWork       *[]float64    `json:"packetcryptorigannwork,omitempty"`
+	PcOrigAnnWork       *[]int32      `json:"packetcryptorigannwork,omitempty"`
 	PcAnnBits           string        `json:"packetcryptannbits,omitempty"`
 	PcAnnDifficulty     *float64      `json:"packetcryptanndifficulty,omitempty"`
 	PcBlkDifficulty     *float64      `json:"packetcryptblkdifficulty,omitempty"`
