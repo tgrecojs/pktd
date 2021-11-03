@@ -3112,12 +3112,62 @@ type retrievedTx struct {
 	tx      *btcutil.Tx
 }
 
+func lookupTxn(
+	hash *chainhash.Hash,
+	txi *indexers.TxIndex,
+	dbase database.DB,
+) (*wire.MsgTx, er.R) {
+	// Look up the location of the transaction.
+	blockRegion, err := txi.TxBlockRegion(hash)
+	if err != nil {
+		context := "Failed to retrieve transaction location"
+		return nil, internalRPCError(err, context)
+	}
+	if blockRegion == nil {
+		return nil, rpcNoTxInfoError(hash)
+	}
+
+	// Load the raw transaction bytes from the database.
+	var txBytes []byte
+	err = dbase.View(func(dbTx database.Tx) er.R {
+		var err er.R
+		txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+		return err
+	})
+	if err != nil {
+		return nil, rpcNoTxInfoError(hash)
+	}
+
+	// Deserialize the transaction
+	var msgTx wire.MsgTx
+	err = msgTx.Deserialize(bytes.NewReader(txBytes))
+	if err != nil {
+		context := "Failed to deserialize transaction"
+		return nil, internalRPCError(err, context)
+	}
+
+	return &msgTx, nil
+}
+
 // fetchInputTxos fetches the outpoints from all transactions referenced by the
 // inputs to the passed transaction by checking the transaction mempool first
 // then the transaction index for those already mined into blocks.
 func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut, er.R) {
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
+	txi, err := s.TxIndex()
+	if err != nil {
+		return nil, err
+	}
+	var wg sync.WaitGroup
+	type Result struct {
+		tx        *wire.MsgTx
+		err       er.R
+		op        *wire.OutPoint
+		txInIndex int
+	}
+	ch := make(chan Result, len(tx.TxIn))
+
 	for txInIndex, txIn := range tx.TxIn {
 		// Attempt to fetch and use the referenced transaction from the
 		// memory pool.
@@ -3136,47 +3186,29 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 			continue
 		}
 
-		// Look up the location of the transaction.
-		txi, err := s.TxIndex()
-		if err != nil {
+		// We're going to be doing some disk access so lets spawn a thread
+		wg.Add(1)
+		go func(op wire.OutPoint, txInIndex int) {
+			ret, err := lookupTxn(&op.Hash, txi, s.cfg.DB)
+			ch <- Result{tx: ret, err: err, op: &op, txInIndex: txInIndex}
+			wg.Done()
+		}(*origin, txInIndex)
+	}
+	wg.Wait()
+	close(ch)
+
+	for res := range ch {
+		if res.err != nil {
 			return nil, err
 		}
-		blockRegion, err := txi.TxBlockRegion(&origin.Hash)
-		if err != nil {
-			context := "Failed to retrieve transaction location"
-			return nil, internalRPCError(err, context)
-		}
-		if blockRegion == nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
-
-		// Load the raw transaction bytes from the database.
-		var txBytes []byte
-		err = s.cfg.DB.View(func(dbTx database.Tx) er.R {
-			var err er.R
-			txBytes, err = dbTx.FetchBlockRegion(blockRegion)
-			return err
-		})
-		if err != nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
-
-		// Deserialize the transaction
-		var msgTx wire.MsgTx
-		err = msgTx.Deserialize(bytes.NewReader(txBytes))
-		if err != nil {
-			context := "Failed to deserialize transaction"
-			return nil, internalRPCError(err, context)
-		}
-
 		// Add the referenced output to the map.
-		if origin.Index >= uint32(len(msgTx.TxOut)) {
+		if res.op.Index >= uint32(len(res.tx.TxOut)) {
 			err := er.Errorf("unable to find output %v "+
-				"referenced from transaction %s:%d", origin,
-				tx.TxHash(), txInIndex)
+				"referenced from transaction %s:%d", res.op,
+				tx.TxHash(), res.txInIndex)
 			return nil, internalRPCError(err, "")
 		}
-		originOutputs[*origin] = *msgTx.TxOut[origin.Index]
+		originOutputs[*res.op] = *res.tx.TxOut[res.op.Index]
 	}
 
 	return originOutputs, nil
