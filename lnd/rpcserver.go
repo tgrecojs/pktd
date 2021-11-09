@@ -7395,3 +7395,17 @@ func (r *rpcServer) SetNetworkStewardVote(ctx context.Context, req *lnrpc.SetNet
 	err := r.wallet.PutNetworkStewardVote(waddrmgr.DefaultAccountNum, waddrmgr.KeyScopeBIP0044, &vote)
 	return result, er.Native(err)
 }
+
+func (r *rpcServer) BcastTransaction(ctx context.Context, req *lnrpc.BcastTransactionRequest) (*lnrpc.BcastTransactionResponse, error) {
+	dst := make([]byte, hex.DecodedLen(len(req.Tx)))
+	_, err := hex.Decode(dst, req.Tx)
+	if err != nil {
+		return nil, err
+	}
+	var msgTx wire.MsgTx
+	msgTx.Deserialize(bytes.NewReader(dst))
+	txidhash, errr := r.wallet.ReliablyPublishTransaction(&msgTx, "")
+	return &lnrpc.BcastTransactionResponse{
+		TxnHash: txidhash.String(),
+	}, er.Native(errr)
+}
