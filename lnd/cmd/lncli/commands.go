@@ -3305,13 +3305,13 @@ func setNetworkStewardVote(ctx *cli.Context) er.R {
 		return er.Errorf("Invalid value for voteagainst")
 	}
 	if len(args) > 1 {
-		votefor= args[1]
+		votefor = args[1]
 	} else {
 		return er.Errorf("Invalid value for votefor")
 	}
 	req := &lnrpc.SetNetworkStewardVoteRequest{
 		VoteAgainst: voteagainst,
-		VoteFor: votefor,
+		VoteFor:     votefor,
 	}
 
 	resp, err := client.SetNetworkStewardVote(ctxb, req)
@@ -3345,10 +3345,49 @@ func getNetworkStewardVote(ctx *cli.Context) er.R {
 	ctxb := context.Background()
 	client, cleanUp := getClient(ctx)
 	defer cleanUp()
-	
+
 	req := &lnrpc.GetNetworkStewardVoteRequest{}
 
 	resp, err := client.GetNetworkStewardVote(ctxb, req)
+	if err != nil {
+		return er.E(err)
+	}
+	printRespJSON(resp)
+	return nil
+}
+
+var bcastTransactionCommand = cli.Command{
+	Name:        "bcasttransaction",
+	Category:    "On-chain",
+	Usage:       "Broadcast a transaction onchain.",
+	ArgsUsage:   "tx",
+	Description: `Broadcast a transaction onchain.`,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "tx",
+			Usage: "Transaction to broadcast",
+		},
+	},
+	Action: actionDecorator(bcastTransaction),
+}
+
+func bcastTransaction(ctx *cli.Context) er.R {
+	ctxb := context.Background()
+	client, cleanUp := getClient(ctx)
+	defer cleanUp()
+	args := ctx.Args()
+	var tx []byte
+	var err error
+	if len(args) > 0 {
+		tx = []byte(args[0])
+	} else {
+		return er.Errorf("Invalid value for tx")
+	}
+	req := &lnrpc.BcastTransactionRequest{
+		Tx: tx,
+	}
+
+	resp, err := client.BcastTransaction(ctxb, req)
 	if err != nil {
 		return er.E(err)
 	}

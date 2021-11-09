@@ -550,6 +550,9 @@ service Lightning {
     
     /*Find out how the wallet is currently configured to vote in a network steward election*/
     rpc GetNetworkStewardVote (GetNetworkStewardVoteRequest) returns (GetNetworkStewardVoteResponse);
+
+    /*Broadcast a transaction*/
+    rpc BcastTransaction (BcastTransactionRequest) returns (BcastTransactionResponse);
 }
 
 message Utxo {
@@ -3918,3 +3921,11 @@ message SetNetworkStewardVoteRequest{
 }
 
 message SetNetworkStewardVoteResponse{}
+
+message BcastTransactionRequest{
+    bytes tx = 1;
+}
+
+message BcastTransactionResponse{
+    string txn_hash = 1;
+}
