@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkt-cash/pktd/btcutil/er"
+	"github.com/pkt-cash/pktd/connmgr/banmgr"
 	"github.com/pkt-cash/pktd/pktlog/log"
 	"github.com/pkt-cash/pktd/wire/protocol"
 
@@ -155,7 +156,7 @@ type ServerPeer struct {
 	server         *ChainService
 	persistent     bool
 	knownAddresses map[string]struct{}
-	banMgr         connmgr.BanMgr
+	banMgr         banmgr.BanMgr
 	quit           chan struct{}
 
 	// The following map of subcribers is used to subscribe to messages
@@ -596,7 +597,7 @@ type ChainService struct {
 	utxoScanner          *UtxoScanner
 	broadcaster          *pushtx.Broadcaster
 	banStore             banman.Store
-	banMgr               connmgr.BanMgr
+	banMgr               banmgr.BanMgr
 
 	mtxCFilter     sync.Mutex
 	pendingFilters map[*pendingFiltersReq]struct{}
@@ -696,7 +697,6 @@ func NewChainService(cfg Config) (*ChainService, er.R) {
 
 	var err er.R
 
-	s.FilterDB, err = filterdb.New(cfg.Database, cfg.ChainParams)
 	if err != nil {
 		return nil, err
 	}

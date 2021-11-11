@@ -2228,7 +2228,7 @@ func (w *Wallet) SendOutputs(txr CreateTxReq) (*txauthor.AuthoredTx, er.R) {
 		return createdTx, nil
 	}
 
-	txHash, err := w.reliablyPublishTransaction(createdTx.Tx, txr.Label)
+	txHash, err := w.ReliablyPublishTransaction(createdTx.Tx, txr.Label)
 	if err != nil {
 		return nil, err
 	}
@@ -2410,7 +2410,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType params.SigHashType,
 // This function is unstable and will be removed once syncing code is moved out
 // of the wallet.
 func (w *Wallet) PublishTransaction(tx *wire.MsgTx, label string) er.R {
-	_, err := w.reliablyPublishTransaction(tx, label)
+	_, err := w.ReliablyPublishTransaction(tx, label)
 	return err
 }
 
@@ -2419,7 +2419,7 @@ func (w *Wallet) PublishTransaction(tx *wire.MsgTx, label string) er.R {
 // relevant database state, and finally possible removing the transaction from
 // the database (along with cleaning up all inputs used, and outputs created) if
 // the transaction is rejected by the backend.
-func (w *Wallet) reliablyPublishTransaction(tx *wire.MsgTx, label string) (*chainhash.Hash, er.R) {
+func (w *Wallet) ReliablyPublishTransaction(tx *wire.MsgTx, label string) (*chainhash.Hash, er.R) {
 	// We need to addRelevantTx this transaction so the user's next tx won't just keep
 	// on trying to spend the same money over and over, but it will get flushed on restarts
 	// because if the tx is invalid, the wallet would otherwise just remember it forever.

@@ -31,6 +31,7 @@ import (
 	"github.com/pkt-cash/pktd/chaincfg"
 	"github.com/pkt-cash/pktd/chaincfg/chainhash"
 	"github.com/pkt-cash/pktd/connmgr"
+	"github.com/pkt-cash/pktd/connmgr/banmgr"
 	"github.com/pkt-cash/pktd/database"
 	"github.com/pkt-cash/pktd/mempool"
 	"github.com/pkt-cash/pktd/mining"
@@ -201,7 +202,7 @@ type server struct {
 	db                   database.DB
 	timeSource           blockchain.MedianTimeSource
 	services             protocol.ServiceFlag
-	banMgr               connmgr.BanMgr
+	banMgr               banmgr.BanMgr
 
 	// The following fields are used for optional indexes.  They will be nil
 	// if the associated index is not enabled.  These fields are set during
@@ -248,7 +249,7 @@ type serverPeer struct {
 	filter         *bloom.Filter
 	addressesMtx   sync.RWMutex
 	knownAddresses map[string]struct{}
-	banScore       *connmgr.DynamicBanScore
+	banScore       *banmgr.DynamicBanScore
 	quit           chan struct{}
 	// The following chans are used to sync blockmanager and server.
 	txProcessed    chan struct{}
