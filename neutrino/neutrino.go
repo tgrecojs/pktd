@@ -155,7 +155,7 @@ type ServerPeer struct {
 	server         *ChainService
 	persistent     bool
 	knownAddresses map[string]struct{}
-	banScore       connmgr.DynamicBanScore
+	banMgr         connmgr.BanMgr
 	quit           chan struct{}
 
 	// The following map of subcribers is used to subscribe to messages
@@ -177,6 +177,7 @@ func newServerPeer(s *ChainService, isPersistent bool) *ServerPeer {
 		knownAddresses:  make(map[string]struct{}),
 		quit:            make(chan struct{}),
 		recvSubscribers: make(map[spMsgSubscription]struct{}),
+		banMgr:          s.banMgr,
 	}
 }
 
@@ -595,6 +596,7 @@ type ChainService struct {
 	utxoScanner          *UtxoScanner
 	broadcaster          *pushtx.Broadcaster
 	banStore             banman.Store
+	banMgr               connmgr.BanMgr
 
 	mtxCFilter     sync.Mutex
 	pendingFilters map[*pendingFiltersReq]struct{}
@@ -979,10 +981,11 @@ func (s *ChainService) GetBlockHeight(hash *chainhash.Hash) (int32, er.R) {
 // the score is above the ban threshold, the peer will be banned and
 // disconnected.
 func (sp *ServerPeer) addBanScore(persistent, transient uint32, reason string) {
+	banScore := sp.banMgr.GetScore(sp.Addr())
 	if transient == 0 && persistent == 0 {
 		// The score is not being increased, but a warning message is
 		// still logged if the score is above the warn threshold.
-		score := sp.banScore.Int()
+		score := banScore.Int()
 		if score > BanWarnThreshold {
 			log.Warnf("Misbehaving peer %s: %s -- ban score is "+
 				"%d, it was not increased this time", sp,
@@ -991,7 +994,7 @@ func (sp *ServerPeer) addBanScore(persistent, transient uint32, reason string) {
 		return
 	}
 
-	score := sp.banScore.Increase(persistent, transient)
+	score := banScore.Increase(persistent, transient)
 	if score > BanWarnThreshold {
 		log.Warnf("Misbehaving peer %s: %s -- ban score increased to %d",
 			sp, reason, score)

@@ -201,6 +201,7 @@ type server struct {
 	db                   database.DB
 	timeSource           blockchain.MedianTimeSource
 	services             protocol.ServiceFlag
+	banMgr               connmgr.BanMgr
 
 	// The following fields are used for optional indexes.  They will be nil
 	// if the associated index is not enabled.  These fields are set during
@@ -247,7 +248,7 @@ type serverPeer struct {
 	filter         *bloom.Filter
 	addressesMtx   sync.RWMutex
 	knownAddresses map[string]struct{}
-	banScore       connmgr.DynamicBanScore
+	banScore       *connmgr.DynamicBanScore
 	quit           chan struct{}
 	// The following chans are used to sync blockmanager and server.
 	txProcessed    chan struct{}
@@ -344,6 +345,10 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 	}
 	if sp.isWhitelisted {
 		log.Debugf("Misbehaving whitelisted peer %s: %s", sp, reason)
+		return
+	}
+	if sp.banScore == nil {
+		log.Debugf("Misbehaving peer %s: %s and no ban manager yet")
 		return
 	}
 
@@ -1588,7 +1593,12 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		delete(state.banned, host)
 	}
 
+	sp.banScore = s.banMgr.GetScore(host)
+
 	// TODO: Check for max peers from a single IP.
+
+	// Rapid reconnect
+	sp.addBanScore(0, 10, "connect")
 
 	// Limit max number of total peers.
 	if state.Count() >= cfg.MaxPeers {
